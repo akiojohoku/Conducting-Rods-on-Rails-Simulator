@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>電磁誘導シミュレーター</title>
+    <!-- Tailwind CSS (スタイリング用) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 全体最適化：スクロールバーの排除 */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        /* 美しい数式風CSS組版 */
+        .math-expr {
+            font-family: "Times New Roman", Times, serif;
+            font-style: italic;
+        }
+        .math-fraction {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            vertical-align: middle;
+            line-height: 1;
+            padding: 0 4px;
+        }
+        .math-numerator {
+            border-bottom: 1px solid currentColor;
+            padding-bottom: 2px;
+            width: 100%;
+            text-align: center;
+        }
+        .math-denominator {
+            padding-top: 2px;
+            width: 100%;
+            text-align: center;
+        }
+        .math-sub {
+            font-size: 0.75em;
+            vertical-align: sub;
+            font-style: normal;
+        }
+        .math-super {
+            font-size: 0.75em;
+            vertical-align: super;
+            font-style: normal;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 w-screen h-screen flex flex-col p-3 md:p-4 select-none">
+
+    <!-- ヘッダー部 -->
+    <header class="flex-shrink-0 flex flex-col xl:flex-row items-center justify-between gap-3 border-b border-slate-200 pb-3 mb-3">
+        <div>
+            <h1 class="text-xl md:text-2xl font-black text-slate-900 flex items-center gap-2">
+                <span class="inline-block w-3.5 h-7 bg-blue-600 rounded-md"></span>
+                電磁誘導・2本の金属棒のダイナミクス
+            </h1>
+            <p class="text-xs text-slate-500 mt-0.5 font-medium">水平かつ平行なレール上の、磁界と誘導電流がつくる動的運動シミュレーター</p>
+        </div>
+        
+        <!-- レスポンシブ対応のモード切り替えタブ -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-1 bg-slate-200/80 p-1 rounded-xl w-full xl:w-auto">
+            <button id="btnMode1" class="px-4 py-2 text-xs md:text-sm font-bold rounded-lg transition-all text-center focus:outline-none">
+                aが等速・b固定
+            </button>
+            <button id="btnMode2" class="px-4 py-2 text-xs md:text-sm font-bold rounded-lg transition-all text-center focus:outline-none">
+                bが自由になりaを追従
+            </button>
+            <button id="btnMode3" class="px-4 py-2 text-xs md:text-sm font-bold rounded-lg transition-all text-center focus:outline-none">
+                a急停止・b減速停止
+            </button>
+        </div>
+    </header>
+
+    <!-- メインレイアウト領域 -->
+    <main class="flex-1 grid grid-cols-12 gap-4 min-h-0">
+        
+        <!-- 左側：シミュレーターメイン画面（7列） -->
+        <div class="col-span-12 lg:col-span-7 flex flex-col gap-3 min-h-0">
+            <div class="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col">
+                <!-- ステータスバッジ -->
+                <div class="absolute top-4 left-4 z-10 flex gap-2">
+                    <span class="px-3 py-1.5 text-xs font-bold rounded-full bg-slate-900 text-white shadow-sm flex items-center gap-2">
+                        <span id="statusDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span id="statusText">準備完了</span>
+                    </span>
+                    <span id="modeBadge" class="px-3 py-1.5 text-xs font-bold rounded-full bg-blue-50 text-blue-700 shadow-sm border border-blue-100">
+                        aが等速・b固定
+                    </span>
+                </div>
+
+                <!-- キャンバスコンテナ -->
+                <div class="flex-1 w-full h-full min-h-0 relative">
+                    <canvas id="simCanvas" class="absolute inset-0 w-full h-full"></canvas>
+                </div>
+
+                <!-- パラメータのリアルタイムダッシュボード -->
+                <div class="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl p-3 grid grid-cols-4 gap-2 text-center shadow-lg">
+                    <div class="border-r border-slate-100">
+                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">時間 t</div>
+                        <div id="metricT" class="text-sm md:text-base font-black text-slate-800 font-mono">0.00 s</div>
+                    </div>
+                    <div class="border-r border-slate-100">
+                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">誘導電流 I</div>
+                        <div id="metricI" class="text-sm md:text-base font-black text-emerald-600 font-mono">0.00 A</div>
+                    </div>
+                    <div class="border-r border-slate-100">
+                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">aの速度 v_a</div>
+                        <div id="metricVa" class="text-sm md:text-base font-black text-rose-600 font-mono">0.00 m/s</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">bの速度 v_b</div>
+                        <div id="metricVb" class="text-sm md:text-base font-black text-blue-600 font-mono">0.00 m/s</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右側：リアルタイムグラフ ＆ 理論数式解説（5列） -->
+        <div class="col-span-12 lg:col-span-5 flex flex-col gap-3 min-h-0">
+            <!-- リアルタイムグラフエリア -->
+            <div class="flex-[1.2] bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col min-h-0">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        速度・電流のリアルタイムグラフ
+                    </h2>
+                    <span class="text-[9px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-full">縦軸オートスケール</span>
+                </div>
+                <div class="flex-1 w-full min-h-0 relative">
+                    <canvas id="graphCanvas" class="absolute inset-0 w-full h-full"></canvas>
+                </div>
+            </div>
+
+            <!-- 動的物理理論カード -->
+            <div id="theoryCard" class="flex-[0.8] bg-slate-900 text-slate-100 rounded-2xl p-4 shadow-lg border border-slate-800 flex flex-col justify-between min-h-0 overflow-y-auto">
+                <div>
+                    <h3 class="text-xs font-bold text-blue-400 uppercase tracking-wider mb-3">物理現象の理論的解析</h3>
+                    <div id="theoryContent" class="space-y-3 text-xs leading-relaxed text-slate-300">
+                        <!-- ここにJavaScriptから数式組版テキストが挿入されます -->
+                    </div>
+                </div>
+                
+                <!-- 内部物理定数インフォメーション -->
+                <div class="mt-4 pt-3 border-t border-slate-800 grid grid-cols-4 text-center text-[10px] text-slate-400 font-mono">
+                    <div>質量 m=1.0</div>
+                    <div>抵抗 Ra=1.0</div>
+                    <div>抵抗 Rb=1.0</div>
+                    <div>幅 l=1.0</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- フッター操作パネル -->
+    <footer class="flex-shrink-0 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        
+        <!-- コントロールボタン -->
+        <div class="flex items-center gap-2.5">
+            <button id="btnStart" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm shadow-md shadow-emerald-600/10 transition-all flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                スタート
+            </button>
+            <button id="btnPause" class="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-white rounded-xl font-bold text-sm shadow-md shadow-amber-500/10 transition-all hidden flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                一時停止
+            </button>
+            <button id="btnReset" class="px-6 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-sm transition-all flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"></path></svg>
+                リセット
+            </button>
+        </div>
+
+        <!-- パラメータ可変スライダー -->
+        <div class="flex flex-col sm:flex-row gap-4 sm:gap-8 flex-1 justify-end w-full md:w-auto">
+            <!-- Bスライダー -->
+            <div class="flex flex-col gap-1 min-w-[180px]">
+                <div class="flex justify-between text-xs font-bold text-slate-600">
+                    <span>磁束密度 <span class="math-expr">B</span></span>
+                    <span id="labelB" class="text-blue-600 font-mono font-bold">1.5 T</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-slate-400 font-bold">弱</span>
+                    <input type="range" id="sliderB" min="0.5" max="3.0" step="0.1" value="1.5" class="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none">
+                    <span class="text-[10px] text-slate-400 font-bold">強</span>
+                </div>
+            </div>
+
+            <!-- v0スライダー -->
+            <div class="flex flex-col gap-1 min-w-[180px]">
+                <div class="flex justify-between text-xs font-bold text-slate-600">
+                    <span>初速度 <span class="math-expr">v<span class="math-sub">0</span></span></span>
+                    <span id="labelV0" class="text-blue-600 font-mono font-bold">2.5 m/s</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-slate-400 font-bold">遅</span>
+                    <input type="range" id="sliderV0" min="1.0" max="5.0" step="0.1" value="2.5" class="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none">
+                    <span class="text-[10px] text-slate-400 font-bold">速</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // --- 物理定数・定型データ ---
+        const m = 1.0;
+        const Ra = 1.0;
+        const Rb = 1.0;
+        const l = 1.0;
+
+        let currentMode = 'mode1';
+        let isRunning = false;
+        let animId = null;
+
+        // 調節可能変数
+        let B = 1.5;
+        let v0 = 2.5;
+
+        // 動的物理値
+        let t = 0;
+        let xa = 3.0;
+        let xb = 1.0;
+        let va = 0;
+        let vb = 0;
+        let I = 0;
+        let E = 0;
+        let fa = 0;
+        let fb = 0;
+        let Fext = 0;
+        let Q = 0;
+
+        let history = [];
+        let chargeFlowOffset = 0;
+
+        // 強固なカラー定数 (外部CSSから取得失敗して落ちるバグを防ぐ)
+        const COLORS = {
+            accentA: '#dc2626',   // a（赤）
+            accentB: '#2563eb',   // b（青）
+            current: '#10b981',   // 電流（緑）
+            force: '#f97316',     // 外力（オレンジ）
+            magnetic: '#a855f7',  // 磁気力（紫）
+            grid: '#e2e8f0',
+            text: '#64748b',
+            darkText: '#0f172a'
+        };
+
+        const simCanvas = document.getElementById('simCanvas');
+        const simCtx = simCanvas.getContext('2d');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const graphCtx = graphCanvas.getContext('2d');
+
+        // --- 動的イベントリスナーの登録 (インラインonclickを完全に回避) ---
+        function bindEvents() {
+            // モード切替ボタン
+            const m1 = document.getElementById('btnMode1');
+            const m2 = document.getElementById('btnMode2');
+            const m3 = document.getElementById('btnMode3');
+            if (m1) m1.addEventListener('click', () => setMode('mode1'));
+            if (m2) m2.addEventListener('click', () => setMode('mode2'));
+            if (m3) m3.addEventListener('click', () => setMode('mode3'));
+
+            // 操作ボタン
+            const sBtn = document.getElementById('btnStart');
+            const pBtn = document.getElementById('btnPause');
+            const rBtn = document.getElementById('btnReset');
+            if (sBtn) sBtn.addEventListener('click', startSim);
+            if (pBtn) pBtn.addEventListener('click', pauseSim);
+            if (rBtn) rBtn.addEventListener('click', resetSim);
+
+            // パラメータスライダー
+            const sB = document.getElementById('sliderB');
+            const sV0 = document.getElementById('sliderV0');
+            if (sB) sB.addEventListener('input', () => onSliderChange('B'));
+            if (sV0) sV0.addEventListener('input', () => onSliderChange('V0'));
+        }
+
+        // アクティブモードボタンの見た目の切り替え
+        function updateModeButtons() {
+            const buttons = {
+                mode1: document.getElementById('btnMode1'),
+                mode2: document.getElementById('btnMode2'),
+                mode3: document.getElementById('btnMode3')
+            };
+            Object.keys(buttons).forEach(modeKey => {
+                const btn = buttons[modeKey];
+                if (!btn) return;
+                if (modeKey === currentMode) {
+                    btn.className = "px-4 py-2 text-xs md:text-sm font-extrabold rounded-lg transition-all text-center bg-blue-600 text-white shadow-md";
+                } else {
+                    btn.className = "px-4 py-2 text-xs md:text-sm font-bold rounded-lg transition-all text-center text-slate-600 hover:text-slate-900 hover:bg-slate-300/50";
+                }
+            });
+
+            const badge = document.getElementById('modeBadge');
+            if (badge) {
+                if (currentMode === 'mode1') badge.innerText = "aが等速・b固定";
+                if (currentMode === 'mode2') badge.innerText = "bが自由になりaを追従";
+                if (currentMode === 'mode3') badge.innerText = "a急停止・b減速停止";
+            }
+        }
+
+        // キャンバスリサイズ (ゼロサイズに対するフォールバック機能付き)
+        function initCanvasSize() {
+            if (!simCanvas || !graphCanvas) return;
+
+            const p1 = simCanvas.parentElement;
+            if (p1) {
+                simCanvas.width = p1.clientWidth || 600;
+                simCanvas.height = p1.clientHeight || 400;
+            }
+
+            const p2 = graphCanvas.parentElement;
+            if (p2) {
+                graphCanvas.width = p2.clientWidth || 500;
+                graphCanvas.height = p2.clientHeight || 300;
+            }
+
+            draw();
+        }
+
+        // スライダー連動
+        function onSliderChange(type) {
+            const sliderB = document.getElementById('sliderB');
+            const sliderV0 = document.getElementById('sliderV0');
+            const labelB = document.getElementById('labelB');
+            const labelV0 = document.getElementById('labelV0');
+
+            if (type === 'B' && sliderB && labelB) {
+                B = parseFloat(sliderB.value);
+                labelB.innerText = B.toFixed(1) + " T";
+            } else if (type === 'V0' && sliderV0 && labelV0) {
+                v0 = parseFloat(sliderV0.value);
+                labelV0.innerText = v0.toFixed(1) + " m/s";
+            }
+            resetSim();
+        }
+
+        function setSlidersDisabled(disabled) {
+            const sB = document.getElementById('sliderB');
+            const sV0 = document.getElementById('sliderV0');
+            if (sB) sB.disabled = disabled;
+            if (sV0) sV0.disabled = disabled;
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            updateModeButtons();
+            updateTheoryPanel();
+            resetSim();
+        }
+
+        // シミュレーターのリセット
+        function resetSim() {
+            pauseSim();
+            setSlidersDisabled(false);
+
+            t = 0;
+            Q = 0;
+            history = [];
+            chargeFlowOffset = 0;
+
+            if (currentMode === 'mode1' || currentMode === 'mode2') {
+                xb = 1.0;
+                xa = 2.8;
+                va = v0;
+                vb = 0;
+            } else if (currentMode === 'mode3') {
+                xb = 1.0;
+                xa = 5.2; // 余裕を持たせた車間
+                va = 0;   // 急停止・固定
+                vb = v0;  // bが初速v0で運動開始
+            }
+
+            calculatePhysics();
+            saveHistory();
+            updateMetrics();
+
+            const sDot = document.getElementById('statusDot');
+            const sText = document.getElementById('statusText');
+            if (sDot) sDot.className = "w-2 h-2 rounded-full bg-slate-400";
+            if (sText) sText.innerText = "準備完了";
+
+            draw();
+        }
+
+        // 物理計算
+        function calculatePhysics() {
+            if (currentMode === 'mode1') {
+                va = v0;
+                vb = 0;
+                E = B * l * va;
+                I = E / (Ra + Rb);
+                fa = I * l * B;
+                Fext = fa;
+                fb = I * l * B;
+            } else if (currentMode === 'mode2') {
+                va = v0;
+                E = B * l * (va - vb);
+                I = E / (Ra + Rb);
+                fa = I * l * B;
+                Fext = fa;
+                fb = I * l * B;
+            } else if (currentMode === 'mode3') {
+                va = 0;
+                E = B * l * (va - vb); // 負の値 (逆方向電流)
+                I = E / (Ra + Rb);
+                fb = Math.abs(I) * l * B;
+                fa = Math.abs(I) * l * B;
+                Fext = 0;
+            }
+        }
+
+        // 積分時間発展ステップ
+        function stepPhysics() {
+            const dt = 0.015;
+
+            if (currentMode === 'mode1') {
+                xa += va * dt;
+                Q += (I * I * (Ra + Rb)) * dt;
+            } else if (currentMode === 'mode2') {
+                xa += va * dt;
+                let ab = fb / m;
+                vb += ab * dt;
+                xb += vb * dt;
+                Q += (I * I * (Ra + Rb)) * dt;
+
+                if ((va - vb) < 0.02) {
+                    vb = va;
+                    I = 0;
+                    fb = 0;
+                    fa = 0;
+                    Fext = 0;
+                    pauseSim();
+                    const sDot = document.getElementById('statusDot');
+                    const sText = document.getElementById('statusText');
+                    if (sDot) sDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-ping";
+                    if (sText) sText.innerText = "ほぼ等速で追従完了";
+                }
+            } else if (currentMode === 'mode3') {
+                let ab = -fb / m;
+                vb += ab * dt;
+
+                if (vb <= 0.005) {
+                    vb = 0;
+                    I = 0;
+                    fb = 0;
+                    fa = 0;
+                    pauseSim();
+                    const sDot = document.getElementById('statusDot');
+                    const sText = document.getElementById('statusText');
+                    if (sDot) sDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-ping";
+                    if (sText) sText.innerText = "完全減速・停止完了";
+                } else {
+                    xb += vb * dt;
+                }
+                Q += (I * I * (Ra + Rb)) * dt;
+            }
+
+            t += dt;
+            chargeFlowOffset += I * 15 * dt;
+            calculatePhysics();
+            saveHistory();
+            updateMetrics();
+
+            const maxPhysX = (simCanvas.width - 100) / 100;
+            if (currentMode === 'mode1' && xa >= maxPhysX) {
+                pauseSim();
+                const sDot = document.getElementById('statusDot');
+                const sText = document.getElementById('statusText');
+                if (sDot) sDot.className = "w-2 h-2 rounded-full bg-amber-500";
+                if (sText) sText.innerText = "右端到達により一時停止";
+            }
+        }
+
+        function saveHistory() {
+            history.push({ t, va, vb, I, Q });
+        }
+
+        function updateMetrics() {
+            const mT = document.getElementById('metricT');
+            const mI = document.getElementById('metricI');
+            const mVa = document.getElementById('metricVa');
+            const mVb = document.getElementById('metricVb');
+
+            if (mT) mT.innerText = t.toFixed(2) + " s";
+            if (mI) mI.innerText = I.toFixed(2) + " A";
+            if (mVa) mVa.innerText = va.toFixed(2) + " m/s";
+            if (mVb) mVb.innerText = vb.toFixed(2) + " m/s";
+        }
+
+        function startSim() {
+            if (!isRunning) {
+                isRunning = true;
+                setSlidersDisabled(true);
+                const btnStart = document.getElementById('btnStart');
+                const btnPause = document.getElementById('btnPause');
+                if (btnStart) btnStart.classList.add('hidden');
+                if (btnPause) btnPause.classList.remove('hidden');
+
+                const sDot = document.getElementById('statusDot');
+                const sText = document.getElementById('statusText');
+                if (sDot) sDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-ping";
+                if (sText) sText.innerText = "シミュレーション中";
+                loop();
+            }
+        }
+
+        function pauseSim() {
+            isRunning = false;
+            const btnStart = document.getElementById('btnStart');
+            const btnPause = document.getElementById('btnPause');
+            if (btnStart) btnStart.classList.remove('hidden');
+            if (btnPause) btnPause.classList.add('hidden');
+            if (animId) cancelAnimationFrame(animId);
+        }
+
+        function loop() {
+            if (isRunning) {
+                stepPhysics();
+                draw();
+                animId = requestAnimationFrame(loop);
+            }
+        }
+
+        function draw() {
+            drawSimulation();
+            drawGraphs();
+        }
+
+        // メインシミュレータのアニメーション描画
+        function drawSimulation() {
+            if (!simCtx || !simCanvas) return;
+            simCtx.clearRect(0, 0, simCanvas.width, simCanvas.height);
+
+            const scale = 100; // 1m = 100px
+            const marginX = 50;
+            const yTop = 105;
+            const yBottom = 225;
+
+            // 1. 磁界 ⊙ 描画
+            simCtx.save();
+            let baseSpacing = 75;
+            let spacing = baseSpacing / Math.sqrt(B / 1.5);
+            let opacity = Math.min(0.08 + (B / 3.0) * 0.35, 0.45);
+            simCtx.strokeStyle = `rgba(30, 41, 59, ${opacity})`;
+            simCtx.fillStyle = `rgba(30, 41, 59, ${opacity})`;
+            simCtx.lineWidth = 1.8;
+
+            for (let x = marginX; x < simCanvas.width - marginX; x += spacing) {
+                for (let y = 35; y < simCanvas.height - 35; y += spacing) {
+                    simCtx.beginPath();
+                    simCtx.arc(x, y, 6.5, 0, Math.PI * 2);
+                    simCtx.stroke();
+                    simCtx.beginPath();
+                    simCtx.arc(x, y, 1.5, 0, Math.PI * 2);
+                    simCtx.fill();
+                }
+            }
+            simCtx.restore();
+
+            // 2. レール線の描画
+            simCtx.save();
+            simCtx.strokeStyle = '#cbd5e1';
+            simCtx.lineWidth = 7;
+            simCtx.lineCap = 'round';
+            simCtx.beginPath();
+            simCtx.moveTo(marginX, yTop);
+            simCtx.lineTo(simCanvas.width - marginX, yTop);
+            simCtx.moveTo(marginX, yBottom);
+            simCtx.lineTo(simCanvas.width - marginX, yBottom);
+            simCtx.stroke();
+            simCtx.restore();
+
+            let pixA = marginX + xa * scale;
+            let pixB = marginX + xb * scale;
+
+            // 3. 閉回路の電流アニメーション (導電ドット)
+            if (Math.abs(I) > 0.015) {
+                simCtx.save();
+                simCtx.strokeStyle = 'rgba(16, 185, 129, 0.15)';
+                simCtx.lineWidth = 4;
+                simCtx.strokeRect(pixB, yTop, pixA - pixB, yBottom - yTop);
+
+                simCtx.fillStyle = COLORS.current;
+                let circ = 2 * (pixA - pixB) + 2 * (yBottom - yTop);
+                let numDots = Math.floor(circ / 35);
+
+                for (let i = 0; i < numDots; i++) {
+                    let dist = (i * (circ / numDots) + chargeFlowOffset) % circ;
+                    if (dist < 0) dist += circ;
+
+                    let cx, cy;
+                    if (dist < (pixA - pixB)) {
+                        cx = pixB + dist;
+                        cy = yTop;
+                    } else if (dist < (pixA - pixB) + (yBottom - yTop)) {
+                        cx = pixA;
+                        cy = yTop + (dist - (pixA - pixB));
+                    } else if (dist < 2 * (pixA - pixB) + (yBottom - yTop)) {
+                        cx = pixA - (dist - (pixA - pixB) - (yBottom - yTop));
+                        cy = yBottom;
+                    } else {
+                        cx = pixB;
+                        cy = yBottom - (dist - 2 * (pixA - pixB) - (yBottom - yTop));
+                    }
+
+                    simCtx.beginPath();
+                    simCtx.arc(cx, cy, 3.8, 0, Math.PI * 2);
+                    simCtx.fill();
+                }
+                simCtx.restore();
+            }
+
+            // 4. 金属棒の描画
+            // 棒 b (青)
+            simCtx.save();
+            simCtx.strokeStyle = COLORS.accentB;
+            simCtx.lineWidth = 8;
+            simCtx.lineCap = 'round';
+            simCtx.beginPath();
+            simCtx.moveTo(pixB, yTop - 18);
+            simCtx.lineTo(pixB, yBottom + 18);
+            simCtx.stroke();
+            simCtx.restore();
+
+            simCtx.fillStyle = '#1e3a8a';
+            simCtx.font = 'bold 12px sans-serif';
+            simCtx.fillText(`金属棒 b (Rb, m)`, pixB - 35, yTop - 28);
+            if (currentMode === 'mode1') {
+                simCtx.fillStyle = '#64748b';
+                simCtx.font = '10px sans-serif';
+                simCtx.fillText(`[固定]`, pixB - 12, yTop - 42);
+            }
+
+            // 棒 a (赤)
+            simCtx.save();
+            simCtx.strokeStyle = COLORS.accentA;
+            simCtx.lineWidth = 8;
+            simCtx.lineCap = 'round';
+            simCtx.beginPath();
+            simCtx.moveTo(pixA, yTop - 18);
+            simCtx.lineTo(pixA, yBottom + 18);
+            simCtx.stroke();
+            simCtx.restore();
+
+            simCtx.fillStyle = '#7f1d1d';
+            simCtx.font = 'bold 12px sans-serif';
+            simCtx.fillText(`金属棒 a (Ra, m)`, pixA - 35, yTop - 28);
+            if (currentMode === 'mode3') {
+                simCtx.fillStyle = '#64748b';
+                simCtx.font = '10px sans-serif';
+                simCtx.fillText(`[固定]`, pixA - 12, yTop - 42);
+            }
+
+            // 5. 力の作用ベクトルを描画 (外力 ＆ 磁気力)
+            const maxArrow = 75;
+            const forceScale = 38;
+            let yMid = (yTop + yBottom) / 2;
+
+            if (currentMode !== 'mode3') {
+                // aの外力 P (オレンジ)
+                let lenExt = Math.min(Fext * forceScale, maxArrow);
+                if (lenExt > 4) {
+                    drawVectorArrow(simCtx, pixA, yMid - 16, lenExt, 0, `外力 P = ${Fext.toFixed(2)} N`, COLORS.force);
+                }
+                // aの磁気力 fa (紫)
+                let lenFa = Math.min(fa * forceScale, maxArrow);
+                if (lenFa > 4) {
+                    drawVectorArrow(simCtx, pixA, yMid + 16, lenFa, Math.PI, `磁気力 fa = ${fa.toFixed(2)} N`, COLORS.magnetic);
+                }
+            } else {
+                // aにかかる静的磁気力 (右向き)
+                let lenFa = Math.min(fa * forceScale, maxArrow);
+                if (lenFa > 4) {
+                    drawVectorArrow(simCtx, pixA, yMid, lenFa, 0, `磁気力 fa = ${fa.toFixed(2)} N`, COLORS.magnetic);
+                }
+            }
+
+            // bの推進・ブレーキ磁気力
+            if (currentMode === 'mode2') {
+                let lenFb = Math.min(fb * forceScale, maxArrow);
+                if (lenFb > 4) {
+                    drawVectorArrow(simCtx, pixB, yMid, lenFb, 0, `磁気力 fb = ${fb.toFixed(2)} N`, COLORS.magnetic);
+                }
+            } else if (currentMode === 'mode3') {
+                let lenFb = Math.min(fb * forceScale, maxArrow);
+                if (lenFb > 4) {
+                    drawVectorArrow(simCtx, pixB, yMid, lenFb, Math.PI, `制動力 fb = ${fb.toFixed(2)} N`, COLORS.magnetic);
+                }
+            }
+
+            // 6. 電流方向インジケータ
+            if (Math.abs(I) > 0.02) {
+                if (I > 0) { // 時計回り
+                    drawVectorArrow(simCtx, pixA, yMid - 40, 18, Math.PI / 2, 'I', COLORS.current, false);
+                    drawVectorArrow(simCtx, pixB, yMid + 40, 18, -Math.PI / 2, COLORS.current, false);
+                } else { // 反時計回り
+                    drawVectorArrow(simCtx, pixA, yMid + 40, 18, -Math.PI / 2, COLORS.current, false);
+                    drawVectorArrow(simCtx, pixB, yMid - 40, 18, Math.PI / 2, COLORS.current, false);
+                }
+            }
+        }
+
+        // ベクトル矢印補助関数
+        function drawVectorArrow(ctx, startX, startY, len, angle, label, color, showLabel = true) {
+            ctx.save();
+            ctx.translate(startX, startY);
+            ctx.rotate(angle);
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = 3.5;
+
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(len, 0);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(len, 0);
+            ctx.lineTo(len - 7, -4);
+            ctx.lineTo(len - 7, 4);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            if (showLabel) {
+                ctx.save();
+                ctx.fillStyle = COLORS.darkText;
+                ctx.font = 'bold 9px sans-serif';
+                ctx.textAlign = 'center';
+                let tx = startX + Math.cos(angle) * (len + 15);
+                let ty = startY + Math.sin(angle) * (len + 15) + 3;
+                if (angle === Math.PI) {
+                    tx = startX - len - 38;
+                    ty = startY + 3;
+                }
+                ctx.fillText(label, tx, ty);
+                ctx.restore();
+            }
+        }
+
+        // グラフキャンバスの描画
+        function drawGraphs() {
+            if (!graphCtx || !graphCanvas) return;
+            graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+
+            const padding = { top: 20, right: 30, bottom: 25, left: 45 };
+            const gap = 20;
+            const h = (graphCanvas.height - padding.top - padding.bottom - gap) / 2;
+
+            let maxT = Math.max(5, t);
+            let maxV = 4.0;
+            let maxI = 3.0;
+
+            history.forEach(pt => {
+                if (Math.abs(pt.va) > maxV) maxV = Math.abs(pt.va);
+                if (Math.abs(pt.vb) > maxV) maxV = Math.abs(pt.vb);
+                if (Math.abs(pt.I) > maxI) maxI = Math.abs(pt.I);
+            });
+            maxV *= 1.15;
+            maxI *= 1.15;
+
+            // 速度グラフ
+            let yTopStart = padding.top;
+            drawGrid(graphCtx, padding.left, yTopStart, graphCanvas.width - padding.right, yTopStart + h, maxT, maxV, '速度 v [m/s]', 't', false);
+            
+            graphCtx.font = 'bold 9px sans-serif';
+            graphCtx.fillStyle = COLORS.accentA;
+            graphCtx.fillText('━ va', graphCanvas.width - 130, yTopStart - 5);
+            graphCtx.fillStyle = COLORS.accentB;
+            graphCtx.fillText('━ vb', graphCanvas.width - 70, yTopStart - 5);
+
+            plotLine(graphCtx, history, pt => pt.va, padding.left, yTopStart, graphCanvas.width - padding.right, yTopStart + h, maxT, maxV, COLORS.accentA, false);
+            plotLine(graphCtx, history, pt => pt.vb, padding.left, yTopStart, graphCanvas.width - padding.right, yTopStart + h, maxT, maxV, COLORS.accentB, false);
+
+            // 電流グラフ
+            let yBottomStart = padding.top + h + gap;
+            drawGrid(graphCtx, padding.left, yBottomStart, graphCanvas.width - padding.right, yBottomStart + h, maxT, maxI, '電流 I [A]', 't', true);
+
+            plotLine(graphCtx, history, pt => pt.I, padding.left, yBottomStart, graphCanvas.width - padding.right, yBottomStart + h, maxT, maxI, COLORS.current, true);
+        }
+
+        function drawGrid(ctx, xMin, yMin, xMax, yMax, maxT, maxVal, yLabel, xLabel, isSigned) {
+            ctx.save();
+            ctx.strokeStyle = COLORS.grid;
+            ctx.lineWidth = 1;
+            ctx.fillStyle = COLORS.text;
+            ctx.font = '9px monospace';
+
+            const w = xMax - xMin;
+            const h = yMax - yMin;
+            const zeroY = isSigned ? yMin + h / 2 : yMax;
+
+            ctx.beginPath();
+            ctx.rect(xMin, yMin, w, h);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.beginPath();
+            ctx.moveTo(xMin, zeroY);
+            ctx.lineTo(xMax, zeroY);
+            ctx.stroke();
+
+            if (isSigned) {
+                ctx.fillText(maxVal.toFixed(1), xMin - 28, yMin + 8);
+                ctx.fillText("-" + maxVal.toFixed(1), xMin - 32, yMax - 2);
+                ctx.fillText("0", xMin - 15, zeroY + 3);
+            } else {
+                ctx.fillText(maxVal.toFixed(1), xMin - 28, yMin + 8);
+                ctx.fillText("0", xMin - 15, yMax + 2);
+            }
+
+            ctx.fillText(maxT.toFixed(1) + " s", xMax - 15, zeroY + 12);
+
+            ctx.strokeStyle = '#f1f5f9';
+            for (let i = 1; i <= 4; i++) {
+                let gx = xMin + (w / 5) * i;
+                ctx.beginPath();
+                ctx.moveTo(gx, yMin);
+                ctx.lineTo(gx, yMax);
+                ctx.stroke();
+            }
+
+            ctx.save();
+            ctx.translate(xMin - 32, (yMin + yMax) / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 9px sans-serif';
+            ctx.fillStyle = '#475569';
+            ctx.fillText(yLabel, 0, 0);
+            ctx.restore();
+
+            ctx.restore();
+        }
+
+        function plotLine(ctx, data, valExtractor, xMin, yMin, xMax, yMax, maxT, maxVal, color, isSigned) {
+            if (data.length === 0) return;
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.2;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+
+            const w = xMax - xMin;
+            const h = yMax - yMin;
+            const zeroY = isSigned ? yMin + h / 2 : yMax;
+            const scaleY = isSigned ? h / (2 * maxVal) : h / maxVal;
+
+            data.forEach((pt, idx) => {
+                let x = xMin + (pt.t / maxT) * w;
+                let y = zeroY - valExtractor(pt) * scaleY;
+
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 理論数式の動的組版表示
+        function updateTheoryPanel() {
+            const panel = document.getElementById('theoryContent');
+            if (!panel) return;
+
+            if (currentMode === 'mode1') {
+                panel.innerHTML = `
+                    <div class="space-y-2">
+                        <span class="inline-block bg-blue-900/60 text-blue-300 px-2.5 py-0.5 rounded-full text-[10px] font-bold">モード1: 定常運動</span>
+                        <p class="text-[11px] text-slate-400">
+                            aは等速度 <span class="math-expr">v<span class="math-sub">0</span></span>、bは固定されています。aの運動に伴い閉回路を貫く磁束が増加し、電磁誘導が生まれます。
+                        </p>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 font-sans text-slate-300">
+                        <div class="flex items-center justify-between text-[11px] border-b border-slate-800/80 pb-1.5">
+                            <span>■ 誘導起電力:</span>
+                            <span class="math-expr text-blue-400 font-bold">E = B l v<span class="math-sub">0</span> = ${(B*l*v0).toFixed(2)} V</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] border-b border-slate-800/80 pb-1.5">
+                            <span>■ 回路を流れる電流:</span>
+                            <span class="math-expr text-emerald-400 font-bold">I = <span class="math-fraction"><span class="math-numerator">E</span><span class="math-denominator">R<span class="math-sub">a</span> + R<span class="math-sub">b</span></span></span> = ${( (B*l*v0)/(Ra+Rb) ).toFixed(2)} A</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span>■ 外力の仕事率 (熱消費):</span>
+                            <span class="math-expr text-amber-400 font-bold">P = F<span class="math-sub">ext</span> v<span class="math-sub">0</span> = I<span class="math-super">2</span>(R<span class="math-sub">a</span>+R<span class="math-sub">b</span>) = ${( Math.pow((B*l*v0)/(Ra+Rb), 2) * (Ra+Rb) ).toFixed(2)} W</span>
+                        </div>
+                    </div>
+                `;
+            } else if (currentMode === 'mode2') {
+                panel.innerHTML = `
+                    <div class="space-y-2">
+                        <span class="inline-block bg-blue-900/60 text-blue-300 px-2.5 py-0.5 rounded-full text-[10px] font-bold">モード2: 連動と追従</span>
+                        <p class="text-[11px] text-slate-400">
+                            bの固定が解除されると、誘導電流 <span class="math-expr">I</span> によって働く磁気力がbを右向きに加速させ、aの背後を追従します。
+                        </p>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 font-sans text-slate-300">
+                        <div class="flex items-center justify-between text-[11px] border-b border-slate-800/80 pb-1.5">
+                            <span>■ bの推進力 (磁気力):</span>
+                            <span class="math-expr text-blue-400 font-bold">f<span class="math-sub">b</span> = I l B</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] border-b border-slate-800/80 pb-1.5">
+                            <span>■ 相対速度連動電流 I:</span>
+                            <span class="math-expr text-emerald-400 font-bold">I = <span class="math-fraction"><span class="math-numerator">B l (v<span class="math-sub">0</span> - v<span class="math-sub">b</span>)</span><span class="math-denominator">R<span class="math-sub">a</span> + R<span class="math-sub">b</span></span></span></span>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span>■ 追従時の収束速度 (t → ∞):</span>
+                            <span class="math-expr text-amber-400 font-bold">v<span class="math-sub">b</span> → v<span class="math-sub">0</span> = ${v0.toFixed(2)} m/s</span>
+                        </div>
+                    </div>
+                `;
+            } else if (currentMode === 'mode3') {
+                let exactQ = 0.5 * m * v0 * v0;
+                let exactL = (m * v0 * (Ra + Rb)) / (B * B * l * l);
+                panel.innerHTML = `
+                    <div class="space-y-2">
+                        <span class="inline-block bg-blue-900/60 text-blue-300 px-2.5 py-0.5 rounded-full text-[10px] font-bold">モード3: 減速停止とジュール熱</span>
+                        <p class="text-[11px] text-slate-400">
+                            aが急停止固定されたことで、bは電磁ブレーキを受け徐々に減速停止します。bの力学エネルギーは全てジュール熱に変わります。
+                        </p>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 font-sans text-slate-300">
+                        <div class="flex items-center justify-between text-[11px] border-b border-slate-800/80 pb-1.5">
+                            <span>■ 消費エネルギー (ジュール熱):</span>
+                            <span class="math-expr text-rose-400 font-bold">Q = <span class="math-fraction"><span class="math-numerator">1</span><span class="math-denominator">2</span></span> m v<span class="math-sub">0</span><span class="math-super">2</span> = ${exactQ.toFixed(3)} J</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span>■ 停止までの滑走距離 L:</span>
+                            <span class="math-expr text-amber-400 font-bold">L = <span class="math-fraction"><span class="math-numerator">m v<span class="math-sub">0</span> (R<span class="math-sub">a</span> + R<span class="math-sub">b</span>)</span><span class="math-denominator">(B l)<span class="math-super">2</span></span></span> = ${exactL.toFixed(3)} m</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // --- 堅牢なライフサイクルコントロール ---
+        function init() {
+            bindEvents();
+            initCanvasSize();
+            setMode('mode1');
+
+            // ResizeObserver を利用してコンテナのリサイズを永続的かつ精確に監視
+            const p1 = simCanvas.parentElement;
+            if (p1 && typeof ResizeObserver !== 'undefined') {
+                const resizeObserver = new ResizeObserver(() => {
+                    initCanvasSize();
+                });
+                resizeObserver.observe(p1);
+            }
+        }
+
+        // DOM構築完了時に初期化を確実に発火
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+
+        window.addEventListener('load', initCanvasSize);
+    </script>
+</body>
+</html>
